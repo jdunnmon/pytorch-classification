@@ -5,12 +5,48 @@ from types import SimpleNamespace
 
 import torch
 import torch.utils.data as data
+import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
+
+from sklearn.metrics import accuracy_score
+from collections import defaultdict
 
 import models.cifar as models
 from dataset import CIFAR100, collate_train, collate_test
 
+def get_coarse_accuracies(prediction_df):
+# Computing superclass accuracy and subclass accuracy
+    coarse_results = defaultdict(dict)
+    accuracy_type = 'coarse'
+    for coarse_class in prediction_df['coarse_labels_string'].unique():
+        coarse_accs = {}
+        coarse_class_df = prediction_df[prediction_df['coarse_labels_string']==coarse_class]
+        coarse_class_acc = accuracy_score(coarse_class_df[f'{accuracy_type}_labels'],coarse_class_df[f'preds'])
+        print(f'{coarse_class} superclass {accuracy_type} label accuracy: {coarse_class_acc}')
+        coarse_results['superclass'].update({coarse_class:coarse_class_acc})
+       # print(f"fine label disribution: {Counter(coarse_class_df['fine_labels_string'])}")
+        for ii, fine_class in enumerate(coarse_class_df['fine_labels_string'].unique()):
+            fine_class_df = coarse_class_df[coarse_class_df['fine_labels_string']==fine_class]
+            fine_class_acc = accuracy_score(fine_class_df[f'{accuracy_type}_labels'],fine_class_df[f'preds'])
+            print(f'{fine_class} subclass {accuracy_type} label accuracy: {fine_class_acc}')
+            coarse_results[f'subclass_{ii}'].update({coarse_class:fine_class_acc})
+        print('\n')
+    return coarse_results
+    
+def extract_resnext_features(md,x):
+    """
+    Extract resnext features
+    """
+    x = md.module.conv_1_3x3.forward(x)
+    x = F.relu(md.module.bn_1.forward(x), inplace=True)
+    x = md.module.stage_1.forward(x)
+    x = md.module.stage_2.forward(x)
+    x = md.module.stage_3.forward(x)
+    x = F.avg_pool2d(x, 8, 1)
+    x = x.view(-1, 1024)
+    return x
+    
 def get_cnn(args, num_classes):
     """
     Loads CNN architecture in style of pytorch-classification
@@ -62,7 +98,7 @@ def load_trained_model(path):
     # Right now, for resnext only
     args = {'arch': model_type, 'depth':29, 'cardinality':8, 'widen_factor': 4, 'drop': 0,
             'superclass': superclass, 'dataset':dataset, 
-            'train_batch':128, 'test_batch':128, 'workers':6}
+            'train_batch':128, 'test_batch':32, 'workers':6}
     args = SimpleNamespace(**args)
     num_classes = 20 if args.superclass else 100
     model = get_cnn(args, num_classes)
