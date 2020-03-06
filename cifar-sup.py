@@ -1,6 +1,7 @@
 '''
-Training script for CIFAR-10/100
+Superclass Training script for CIFAR-10/100
 Copyright (c) Wei YANG, 2017
+Modified by Jared Dunnmon, 2019
 '''
 from __future__ import print_function
 
